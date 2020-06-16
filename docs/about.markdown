@@ -1,18 +1,7 @@
 ---
 layout: page
-title: About
+title: about
 permalink: /about/
 ---
 
-This is the base Jekyll theme. You can find out more info about customizing your Jekyll theme, as well as basic Jekyll usage documentation at [jekyllrb.com](https://jekyllrb.com/)
-
-You can find the source code for Minima at GitHub:
-[jekyll][jekyll-organization] /
-[minima](https://github.com/jekyll/minima)
-
-You can find the source code for Jekyll at GitHub:
-[jekyll][jekyll-organization] /
-[jekyll](https://github.com/jekyll/jekyll)
-
-
-[jekyll-organization]: https://github.com/jekyll
+I am a pentester/security-engineer/researcher enjoying working in security. Github seemed like a good place to note issues I uncovered, or tactics I learned which didn't seem to be well documented elsewhere during my research. Hopefully these notes will help others as they attack/defend.

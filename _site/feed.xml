@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2020-06-15T22:23:00-06:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">exploiting apache tomcat via jmx</title><link href="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html" rel="alternate" type="text/html" title="exploiting apache tomcat via jmx" /><published>2020-06-15T00:00:00-06:00</published><updated>2020-06-15T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html">&lt;h1 id=&quot;motivation&quot;&gt;motivation&lt;/h1&gt;
+
+&lt;p&gt;Often on internal network pentests, you’ll come across an Apache Tomcat server. Usually access to the manager endpoint is restricted by network controls (requiring localhost access for example), but sometimes it’s left open.&lt;/p&gt;
+
+&lt;p&gt;If you find yourself unable to brute-force common tomcat default credentials, there may still be an avenue to exploit the server.&lt;/p&gt;
+
+&lt;h1 id=&quot;prerequisites&quot;&gt;prerequisites&lt;/h1&gt;
+
+&lt;p&gt;The following configs are peculiar, but I’ve seen them in the wild:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;the /manager app isn’t restricted to the localhost&lt;/li&gt;
+  &lt;li&gt;jmx is exposed (with no auth)&lt;/li&gt;
+  &lt;li&gt;the tomcat user database is writable&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;why-not-just-exploit-jmx&quot;&gt;why not just exploit jmx?&lt;/h1&gt;
+
+&lt;p&gt;Good question! Abusing a no-auth JMX/RMI endpoint is easy with metasploit, however there are cases when the payloads aren’t working (classloader issues, host configuration weirdness, network limitations, etc.):&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;exploit(multi/misc/java_jmx_server) &amp;gt; run
+
+[*] 127.0.0.1:8888 - Using URL: http://0.0.0.0:7777/SDgpPc
+[*] 127.0.0.1:8888 - Local IP: http://192.168.1.123:7777/SDgpPc
+[*] 127.0.0.1:8888 - Sending RMI Header...
+[*] 127.0.0.1:8888 - Discovering the JMXRMI endpoint...
+[+] 127.0.0.1:8888 - JMXRMI endpoint on 172.17.0.2:44803
+[*] 127.0.0.1:8888 - Proceeding with handshake...
+[+] 127.0.0.1:8888 - Handshake with JMX MBean server on 172.17.0.2:44803
+[*] 127.0.0.1:8888 - Loading payload...
+[*] Started bind TCP handler against 172.17.0.2:9999
+[*] 127.0.0.1:8888 - Replied to request for mlet
+[*] 127.0.0.1:8888 - Replied to request for payload JAR
+[*] 127.0.0.1:8888 - Executing payload...
+[*] 127.0.0.1:8888 - Replied to request for payload JAR
+[-] 127.0.0.1:8888 - Exploit failed: Rex::Proto::Rmi::Exception javax.management.RuntimeMBeanException
+[*] 127.0.0.1:8888 - Server stopped.
+[*] Exploit completed, but no session was created.
+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;… Or maybe you’re avoiding metasploit entirely and want to backdoor the server by hand? If you find yourself in this scenario getting in as an authenticated user is really easy without any special tooling.&lt;/p&gt;
+
+&lt;h1 id=&quot;reconfiguring-the-server&quot;&gt;reconfiguring the server&lt;/h1&gt;
+
+&lt;p&gt;Connecting to the server via &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;jconsole&lt;/code&gt; we can execute some Tomcat-specific methods to let ourselves in.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-jconsole-config.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;If the UserDatabase is marked as &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;writable = true&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;readonly = false&lt;/code&gt;, you’re in luck:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-writable.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Under the UserDatabase node, we’re able to create new users. Let’s make one called &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tomcat&lt;/code&gt; with the password of our choosing:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-jmx-create-user.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Let’s make sure we have the manager-gui role created on the server as well, so we’re fully authorized:
+&lt;img src=&quot;/screens/tomcat-jmx-create-role.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Moving to the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;Users&lt;/code&gt;  node in the tree we can associate our created user with our created role:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-jmx-associate-role.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Once the configuration has been saved:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-jmx-save.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;We’re able to enter our credentials on the /manager/html endpoint:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-basic-auth-path.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;… and we’re in!&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/tomcat-manager-access.png&quot; alt=&quot;accessing the tomcat manager&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;At this point we can get code-execution via the typical malicious .war upload, as detailed lots of places. &lt;a href=&quot;https://null-byte.wonderhowto.com/how-to/hack-apache-tomcat-via-malicious-war-file-upload-0202593/&quot;&gt;Here&lt;/a&gt; for example.&lt;/p&gt;
+
+&lt;h1 id=&quot;try-it-out&quot;&gt;try it out&lt;/h1&gt;
+
+&lt;p&gt;If you’d like to experiment with this, below is a Dockerfile which will spin up a tomcat server in the vulnerable configuration.&lt;/p&gt;
+
+&lt;p&gt;issue the following commands (from within the same directory as the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;Dockerfile&lt;/code&gt;:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;docker build -t t8 .
+docker run -p 8888:8888 -p 8080:8080 t8
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Once the container is running, you can visit the tomcat server on 127.0.0.1:8080 and interact with JMX (metasploit or jconsole, etc.) at 127.0.0.1:8888&lt;/p&gt;
+
+&lt;p&gt;Here’s the &lt;a href=&quot;/downloadable/tomcat/Dockerfile&quot;&gt;Dockerfile&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h1 id=&quot;if-youre-defending&quot;&gt;if you’re defending&lt;/h1&gt;
+
+&lt;p&gt;The heart of this attack lies in JMX. Developers often assume the JMX endpoints have no security implications and they copy+paste JVM args disabling authentication on them. Watch your network for no-auth JMX endpoints, and yell loudly if you find them. Unfortunately there aren’t very standard ports to look for, so you may need to try to detect them in deployment configs, or heavily firewall off non-standard ports so that a developer trying to expose one would trigger a change request and paper trail of some sort.&lt;/p&gt;</content><author><name></name></author><summary type="html">motivation</summary></entry></feed>

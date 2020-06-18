@@ -24,6 +24,8 @@ description: >- # this means to ignore newlines until "baseurl:"
   some security-related notes from the field, hopefully of use to other attackers/defenders...
 baseurl: "/" # the subpath of your site, e.g. /blog
 url: "https://b4ny4n.github.io" # the base hostname & protocol for your site, e.g. http://example.com
+
+
 twitter_username: b4ny4n
 github_username:  b4ny4n
 
@@ -32,7 +34,7 @@ theme: minima
 plugins:
   - jekyll-feed
   - jekyll-toc
-
+  - jekyll-sitemap
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to

